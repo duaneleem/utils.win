@@ -1,0 +1,11 @@
+.env
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# Temp / logs
+*.log
+*.tmp
+*.temp

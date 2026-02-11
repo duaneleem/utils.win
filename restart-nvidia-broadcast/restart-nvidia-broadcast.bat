@@ -1,9 +1,13 @@
 @echo off
 setlocal
 
-REM Paths to executables (OBS path kept for reference; we only taskkill by process name)
-set "EXE=C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe"
-set "OBS=C:\Program Files\obs-studio\bin\64bit\obs64.exe"
+REM Load paths from .env only (not .env.sample) if present; else use defaults (%ProgramFiles%)
+if exist "%~dp0.env" (
+  for /f "usebackq delims=" %%L in ("%~dp0.env") do %%L
+) else (
+  set "EXE=%ProgramFiles%\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe"
+  set "OBS=%ProgramFiles%\obs-studio\bin\64bit\obs64.exe"
+)
 
 REM Force-close NVIDIA Broadcast and OBS so they can be restarted cleanly
 echo Stopping NVIDIA Broadcast and OBS...
