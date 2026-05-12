@@ -1,0 +1,6 @@
+# Local sync state (see repo root .gitignore too)
+temp/
+trackers/
+uploaded_files_*.txt
+targets.tsv
+.env

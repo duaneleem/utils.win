@@ -1,5 +1,11 @@
 .env
 
+# sync-obsidian: local targets + tracker dir (samples stay tracked)
+sync-obsidian/temp/
+sync-obsidian/trackers/
+sync-obsidian/uploaded_files_*.txt
+sync-obsidian/targets.tsv
+
 # Windows
 Thumbs.db
 Desktop.ini
