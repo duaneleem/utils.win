@@ -49,8 +49,11 @@ function Get-TrackerPath {
 
 function Load-UploadedState {
   param([string]$TrackerPath)
-  $dict = [System.Collections.Generic.Dictionary[string, long]]::new([StringComparer]::OrdinalIgnoreCase)
-  if (-not (Test-Path -LiteralPath $TrackerPath)) { return ,$dict }
+  $ticksDict = [System.Collections.Generic.Dictionary[string, long]]::new([StringComparer]::OrdinalIgnoreCase)
+  $fileIdDict = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
+  if (-not (Test-Path -LiteralPath $TrackerPath)) {
+    return ,([pscustomobject]@{ Ticks = $ticksDict; FileIds = $fileIdDict })
+  }
   foreach ($line in @(Get-Content -LiteralPath $TrackerPath -Encoding utf8)) {
     $line = $line.TrimEnd("`r", "`n")
     if (-not $line) { continue }
@@ -61,37 +64,80 @@ function Load-UploadedState {
       if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
       $fi = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue
       if (-not $fi) { continue }
-      $dict[$fi.FullName] = $fi.LastWriteTimeUtc.Ticks
+      $ticksDict[$fi.FullName] = $fi.LastWriteTimeUtc.Ticks
       continue
     }
     $p = $line.Substring(0, $tab).TrimEnd()
-    $rest = $line.Substring($tab + 1).Trim()
-    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+    $rest = $line.Substring($tab + 1)
+    $tab2 = $rest.IndexOf("`t", [System.StringComparison]::Ordinal)
+    $ticksPart = if ($tab2 -ge 0) { $rest.Substring(0, $tab2).Trim() } else { $rest.Trim() }
+    $fidPart = if ($tab2 -ge 0) { $rest.Substring($tab2 + 1).Trim() } else { $null }
     $ticks = [long]0
-    if (-not [long]::TryParse($rest, [ref]$ticks)) { continue }
-    $fi = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue
-    if (-not $fi) { continue }
-    $dict[$fi.FullName] = $ticks
+    if (-not [long]::TryParse($ticksPart, [ref]$ticks)) { continue }
+    $fid = if ([string]::IsNullOrWhiteSpace($fidPart)) { $null } else { $fidPart }
+
+    $key = $p
+    if (Test-Path -LiteralPath $p -PathType Leaf) {
+      $fi = Get-Item -LiteralPath $p -ErrorAction SilentlyContinue
+      if ($fi) { $key = $fi.FullName }
+    }
+
+    $ticksDict[$key] = $ticks
+    if ($fid) { $fileIdDict[$key] = $fid }
   }
-  return ,$dict
+  return ,([pscustomobject]@{ Ticks = $ticksDict; FileIds = $fileIdDict })
 }
 
 function Save-UploadedState {
   param(
     [string]$TrackerPath,
-    [System.Collections.Generic.Dictionary[string, long]]$State
+    [System.Collections.Generic.Dictionary[string, long]]$Ticks,
+    [System.Collections.Generic.Dictionary[string, string]]$FileIds
   )
   $utf8 = [System.Text.UTF8Encoding]::new($false)
   $lines = New-Object System.Collections.Generic.List[string]
-  foreach ($k in (@($State.Keys) | Sort-Object)) {
+  foreach ($k in (@($Ticks.Keys) | Sort-Object)) {
     if (-not (Test-Path -LiteralPath $k -PathType Leaf)) { continue }
-    [void]$lines.Add("$k`t$($State[$k])")
+    $t = $Ticks[$k]
+    $fid = $null
+    if ($FileIds.ContainsKey($k)) { $fid = $FileIds[$k] }
+    if ($fid) {
+      [void]$lines.Add("$k`t$t`t$fid")
+    } else {
+      [void]$lines.Add("$k`t$t")
+    }
   }
   $parent = Split-Path -Parent $TrackerPath
   if (-not [string]::IsNullOrEmpty($parent) -and -not (Test-Path -LiteralPath $parent)) {
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
   }
   [System.IO.File]::WriteAllLines($TrackerPath, $lines.ToArray(), $utf8)
+}
+
+function Limit-PowerShellTranscriptLog {
+  <#
+  .SYNOPSIS
+    Keeps only the last N complete Windows PowerShell transcript runs in a log file (Start-Transcript -Append).
+  #>
+  param(
+    [Parameter(Mandatory)][string]$Path,
+    [ValidateRange(1, 500)][int]$KeepRuns = 3
+  )
+  try {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    if ((Get-Item -LiteralPath $Path).Length -eq 0) { return }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if ([string]::IsNullOrWhiteSpace($text)) { return }
+    # One run: banner + "transcript start" ... banner + "transcript end" + End time + banner
+    $pattern = '(?s)\*{22}\s*\r?\nWindows PowerShell transcript start\r?\n.*?\r?\n\*{22}\s*\r?\nWindows PowerShell transcript end\r?\nEnd time:[^\r\n]*\r?\n\*{22}\s*\r?\n'
+    $matches = [regex]::Matches($text, $pattern)
+    if ($matches.Count -le $KeepRuns) { return }
+    $firstKeepIndex = $matches[$matches.Count - $KeepRuns].Index
+    $newText = $text.Substring($firstKeepIndex)
+    [System.IO.File]::WriteAllText($Path, $newText)
+  } catch {
+    Write-Warning ("Could not trim transcript log (left file unchanged): {0}" -f $_.Exception.Message)
+  }
 }
 
 function Get-FileIdFromUploadJson {
@@ -109,7 +155,7 @@ function Get-FileIdFromUploadJson {
 
 function Format-OpenWebUiFailureMessage {
   param(
-    [ValidateSet('Upload', 'Attach')]
+    [ValidateSet('Upload', 'Attach', 'Remove')]
     [string]$Stage,
     [string]$FilePath,
     [int]$StatusCode,
@@ -282,6 +328,39 @@ function Invoke-OpenWebUiKnowledgeFileAdd {
   }
 }
 
+function Invoke-OpenWebUiKnowledgeFileRemove {
+  param(
+    [System.Net.Http.HttpClient]$Client,
+    [string]$Url,
+    [string]$JsonBody
+  )
+  $sc = $null
+  try {
+    $sc = [System.Net.Http.StringContent]::new(
+      $JsonBody,
+      [System.Text.UTF8Encoding]::new($false),
+      'application/json'
+    )
+    $resp = $Client.PostAsync($Url, $sc).GetAwaiter().GetResult()
+    $bodyStr = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    return [pscustomobject]@{
+      Success    = $resp.IsSuccessStatusCode
+      StatusCode = [int]$resp.StatusCode
+      Content    = $bodyStr
+      Detail     = $null
+    }
+  } catch {
+    return [pscustomobject]@{
+      Success    = $false
+      StatusCode = 0
+      Content    = $null
+      Detail     = $_.Exception.Message
+    }
+  } finally {
+    if ($null -ne $sc) { $sc.Dispose() }
+  }
+}
+
 $envMap = Read-DotEnv -Path $EnvFile
 if (-not $envMap['API_KEY'] -or $envMap['API_KEY'] -eq 'replace-with-your-open-webui-api-key') {
   Write-Error "Missing API_KEY in .env (copy from .env.sample and set your Open WebUI API key)."
@@ -302,6 +381,22 @@ if ($envMap['UPLOAD_DELAY_MS']) {
   if ([int]::TryParse($envMap['UPLOAD_DELAY_MS'], [ref]$dm) -and $dm -ge 0) { $uploadDelayMs = $dm }
 }
 
+$removeDeleteFile = $true
+if ($envMap['KNOWLEDGE_REMOVE_DELETE_FILE']) {
+  $rv = $envMap['KNOWLEDGE_REMOVE_DELETE_FILE'].Trim().ToLowerInvariant()
+  if ($rv -in @('0', 'false', 'no', 'off')) { $removeDeleteFile = $false }
+}
+
+$warnEmptyContent = $false
+if ($envMap['WARN_EMPTY_CONTENT']) {
+  $wv = $envMap['WARN_EMPTY_CONTENT'].Trim().ToLowerInvariant()
+  if ($wv -in @('1', 'true', 'yes', 'on')) { $warnEmptyContent = $true }
+}
+elseif ($envMap['WARN_EMPTY_ATTACH']) {
+  $wv = $envMap['WARN_EMPTY_ATTACH'].Trim().ToLowerInvariant()
+  if ($wv -in @('1', 'true', 'yes', 'on')) { $warnEmptyContent = $true }
+}
+
 $extList = @('.md', '.txt', '.pdf', '.html', '.csv')
 if ($envMap['FILE_EXTENSIONS']) {
   $extList = $envMap['FILE_EXTENSIONS'].Split(',') | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ }
@@ -318,15 +413,58 @@ if (-not $rows -or $rows.Count -eq 0) {
 
 $uploadUrl = "$baseUrl/api/v1/files/"
 
+$transcriptLogPath = $null
+if ($envMap['LOG_PATH']) {
+  $lp = $envMap['LOG_PATH'].Trim()
+  if ($lp) {
+    if ([System.IO.Path]::IsPathRooted($lp)) {
+      $transcriptLogPath = $lp
+    } else {
+      $transcriptLogPath = Join-Path $ScriptDir $lp
+    }
+  }
+}
+
+$logKeepRuns = 3
+if ($null -ne $envMap['LOG_KEEP_RUNS'] -and $envMap['LOG_KEEP_RUNS'].Trim() -ne '') {
+  $lr = $envMap['LOG_KEEP_RUNS'].Trim()
+  $parsed = -1
+  if ([int]::TryParse($lr, [ref]$parsed) -and $parsed -ge 0) {
+    $logKeepRuns = $parsed
+  }
+}
+
 $http = New-OpenWebUiHttpClient -BearerToken $apiKey -TimeoutSeconds $httpTimeoutSec
+$transcriptActive = $false
 try {
   $httpClient = $http.Client
+
+  if ($transcriptLogPath) {
+    try {
+      $logParent = Split-Path -Parent $transcriptLogPath
+      if (-not [string]::IsNullOrEmpty($logParent) -and -not (Test-Path -LiteralPath $logParent)) {
+        New-Item -ItemType Directory -Path $logParent -Force | Out-Null
+      }
+      if ($logKeepRuns -gt 0) {
+        Limit-PowerShellTranscriptLog -Path $transcriptLogPath -KeepRuns $logKeepRuns
+      }
+      Start-Transcript -Path $transcriptLogPath -Append -Force | Out-Null
+      $transcriptActive = $true
+      Write-Host ("Logging host output to: {0}" -f $transcriptLogPath)
+    } catch {
+      Write-Warning ("Could not start transcript (LOG_PATH): {0}" -f $_.Exception.Message)
+    }
+  }
 
   $totalOk = 0
   $totalSkip = 0
   $totalFail = 0
   $totalChanged = 0
   $totalDupAttachOk = 0
+  $totalSkipEmptyContent = 0
+  $totalRemovedRemote = 0
+  $totalRemoveFail = 0
+  $totalRemoveOrphanLocal = 0
 
   foreach ($row in $rows) {
     $watch = [string]$row.watch_folder
@@ -343,12 +481,54 @@ try {
     }
 
     $trackerPath = Get-TrackerPath -KnowledgeId $kid
-    $uploaded = Load-UploadedState -TrackerPath $trackerPath
+    $loaded = Load-UploadedState -TrackerPath $trackerPath
+    $uploadedTicks = $loaded.Ticks
+    $uploadedFileIds = $loaded.FileIds
     $addUrl = "$baseUrl/api/v1/knowledge/$kid/file/add"
+    $delQuery = if ($removeDeleteFile) { 'true' } else { 'false' }
+    $removeUrl = "$baseUrl/api/v1/knowledge/$kid/file/remove?delete_file=$delQuery"
 
     Write-Host ('Target: {0} -> knowledge {1} (tracker: {2})' -f $watch, $kid, (Split-Path -Leaf $trackerPath))
 
     $files = Get-ChildItem -LiteralPath $watch -Recurse -File -ErrorAction SilentlyContinue
+    $onDisk = @{}
+    foreach ($f in $files) {
+      $ext = $f.Extension.ToLowerInvariant()
+      if ($extList -notcontains $ext) { continue }
+      $onDisk[$f.FullName] = $true
+    }
+
+    foreach ($trackedPath in @($uploadedTicks.Keys)) {
+      if ($onDisk.ContainsKey($trackedPath)) { continue }
+      $fid = $null
+      if ($uploadedFileIds.ContainsKey($trackedPath)) { $fid = $uploadedFileIds[$trackedPath] }
+      if ($fid) {
+        $bodyRm = (@{ file_id = $fid } | ConvertTo-Json -Compress)
+        $rm = Invoke-OpenWebUiKnowledgeFileRemove -Client $httpClient -Url $removeUrl -JsonBody $bodyRm
+        if (-not $rm.Success) {
+          $msg = if ($rm.Detail) {
+            Format-OpenWebUiFailureMessage -Stage Remove -FilePath $trackedPath -StatusCode $rm.StatusCode -RawBody $null -TransportDetail $rm.Detail
+          } else {
+            Format-OpenWebUiFailureMessage -Stage Remove -FilePath $trackedPath -StatusCode $rm.StatusCode -RawBody $rm.Content -TransportDetail $null
+          }
+          Write-Warning $msg
+          $totalRemoveFail++
+          if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
+          continue
+        }
+        [void]$uploadedTicks.Remove($trackedPath)
+        [void]$uploadedFileIds.Remove($trackedPath)
+        $totalRemovedRemote++
+        Write-Host ("  Removed from Knowledge (file deleted locally): {0}" -f $trackedPath)
+        if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
+      } else {
+        [void]$uploadedTicks.Remove($trackedPath)
+        [void]$uploadedFileIds.Remove($trackedPath)
+        $totalRemoveOrphanLocal++
+        Write-Warning ("Tracker had no file_id for a path that no longer exists; pruned local tracker only (Knowledge may still list the document): {0}" -f $trackedPath)
+      }
+    }
+
     foreach ($f in $files) {
       $full = $f.FullName
       $ext = $f.Extension.ToLowerInvariant()
@@ -356,14 +536,39 @@ try {
 
       $ticksNow = $f.LastWriteTimeUtc.Ticks
       $priorTicks = [long]0
-      $hadPrior = $uploaded.TryGetValue($full, [ref]$priorTicks)
+      $hadPrior = $uploadedTicks.TryGetValue($full, [ref]$priorTicks)
       if ($hadPrior -and ($priorTicks -eq $ticksNow)) {
         $totalSkip++
         continue
       }
 
+      # Open WebUI rejects 0-byte uploads (ValueError EMPTY_CONTENT) but the HTTP JSON is usually a generic
+      # "Error uploading file" detail, not the real message — so skip here to avoid hammering the server.
+      if ($f.Length -eq 0) {
+        $uploadedTicks[$full] = $ticksNow
+        if ($uploadedFileIds.ContainsKey($full)) { [void]$uploadedFileIds.Remove($full) }
+        $totalSkipEmptyContent++
+        if ($warnEmptyContent) {
+          Write-Warning ("Skipping 0-byte file (server rejects empty body); recorded in tracker until file is modified: {0}" -f $full)
+        }
+        if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
+        continue
+      }
+
       $up = Invoke-OpenWebUiFileUpload -Client $httpClient -Url $uploadUrl -FilePath $full
       if (-not $up.Success) {
+        $upBody = [string]$up.Content
+        $upMatchText = ($upBody + "`n" + [string]$up.Detail)
+        if ($upMatchText -match '(?i)content provided is empty') {
+          $uploadedTicks[$full] = $ticksNow
+          if ($uploadedFileIds.ContainsKey($full)) { [void]$uploadedFileIds.Remove($full) }
+          $totalSkipEmptyContent++
+          if ($warnEmptyContent) {
+            Write-Warning ("Upload rejected empty content; recorded in tracker; skipping until file is modified: {0}" -f $full)
+          }
+          if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
+          continue
+        }
         $msg = if ($up.Detail) {
           Format-OpenWebUiFailureMessage -Stage Upload -FilePath $full -StatusCode $up.StatusCode -RawBody $null -TransportDetail $up.Detail
         } else {
@@ -389,10 +594,22 @@ try {
       $add = Invoke-OpenWebUiKnowledgeFileAdd -Client $httpClient -Url $addUrl -JsonBody $body
       if (-not $add.Success) {
         $attachBody = [string]$add.Content
-        if ($attachBody -match '(?i)duplicate\s+content\s+detected') {
+        $attachMatchText = ($attachBody + "`n" + [string]$add.Detail)
+        if ($attachMatchText -match '(?i)duplicate\s+content\s+detected') {
           Write-Host ("  OK (already in Knowledge; attach duplicate ignored) {0}" -f $full)
-          $uploaded[$full] = $ticksNow
+          $uploadedTicks[$full] = $ticksNow
+          $uploadedFileIds[$full] = $fileId
           $totalDupAttachOk++
+          if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
+          continue
+        }
+        if ($attachMatchText -match '(?i)content provided is empty') {
+          $uploadedTicks[$full] = $ticksNow
+          $uploadedFileIds[$full] = $fileId
+          $totalSkipEmptyContent++
+          if ($warnEmptyContent) {
+            Write-Warning ("Attach returned empty content (no extractable text). Recorded in tracker; skipping until file is modified (e.g. OCR or re-save): {0}" -f $full)
+          }
           if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
           continue
         }
@@ -407,18 +624,22 @@ try {
         continue
       }
 
-      $uploaded[$full] = $ticksNow
+      $uploadedTicks[$full] = $ticksNow
+      $uploadedFileIds[$full] = $fileId
       if ($hadPrior) { $totalChanged++ } else { $totalOk++ }
       Write-Host "  OK $full"
       if ($uploadDelayMs -gt 0) { Start-Sleep -Milliseconds $uploadDelayMs }
     }
 
-    Save-UploadedState -TrackerPath $trackerPath -State $uploaded
+    Save-UploadedState -TrackerPath $trackerPath -Ticks $uploadedTicks -FileIds $uploadedFileIds
   }
 
-  Write-Host "Done. New uploads: $totalOk  Re-uploaded (changed): $totalChanged  Skipped (unchanged): $totalSkip  Dup attach OK: $totalDupAttachOk  Failed: $totalFail"
-  if ($totalFail -gt 0) { exit 1 }
+  Write-Host "Done. New uploads: $totalOk  Re-uploaded (changed): $totalChanged  Skipped (unchanged): $totalSkip  Skipped (empty content until changed): $totalSkipEmptyContent  Dup attach OK: $totalDupAttachOk  Removed (remote): $totalRemovedRemote  Remove failed: $totalRemoveFail  Tracker pruned (no file_id): $totalRemoveOrphanLocal  Failed: $totalFail"
+  if ($totalFail -gt 0 -or $totalRemoveFail -gt 0) { exit 1 }
 } finally {
+  if ($transcriptActive) {
+    try { Stop-Transcript | Out-Null } catch { }
+  }
   if ($null -ne $http.Client) { $http.Client.Dispose() }
   if ($null -ne $http.Handler) { $http.Handler.Dispose() }
 }
