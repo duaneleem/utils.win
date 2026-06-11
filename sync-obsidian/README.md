@@ -59,6 +59,19 @@ Each **non-empty** line is one of:
 
 **Note:** Re-uploading after an edit (same path, new mtime) adds **another** copy in Open WebUI unless you removed the old document; the remove-on-delete flow clears the prior attachment when you delete the file locally and the tracker had a `file_id`.
 
+### Resync a Knowledge target from scratch
+
+Use this after experimenting with Open WebUI’s built-in directory sync, switching machines, or when you want a full re-upload for one course folder.
+
+1. In Open WebUI, open each affected **Knowledge** collection and **remove all documents** (or delete and recreate the collection and update `knowledge_id` in `targets.tsv` if the id changed).
+2. Delete that target’s local tracker file, for example:
+   - COMM 310: `trackers/uploaded_files_e0f06c42-921c-465d-9bcb-3620c0e12a86.txt`
+   - COMM 320: `trackers/uploaded_files_144e87a0-3980-4873-8c37-0b59977d6e4c.txt`
+   (Pattern: `trackers/uploaded_files_<knowledge_id>.txt` from the second column in `targets.tsv`.)
+3. Run **`sync-obsidian.ps1`** (or the `.bat`). Every file under that watch folder is treated as new and goes through upload + attach.
+
+Skipping step 1 can leave **duplicate** entries in Knowledge (attach may report “duplicate content” for some files; others may appear twice). Other targets in `targets.tsv` are unaffected if you only delete their tracker files.
+
 ## Run
 
 Double-click **`sync-obsidian.bat`** or from a terminal:
