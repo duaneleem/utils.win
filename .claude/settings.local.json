@@ -11,10 +11,18 @@
       "Bash(./.claude/skills/run-pdf-converter/smoke.sh)",
       "Bash(wslpath \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\sh-convert-pdf-to-text\")",
       "Bash(ls /mnt/d/duaneleem/Code/ 2>&1 | head -20)",
-      "Read(//mnt/d/duaneleem/**)"
+      "Read(//mnt/d/duaneleem/**)",
+      "Bash(mkdir -p \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\.claude\\\\skills\\\\update-docs\")",
+      "Bash(chmod +x \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\.claude\\\\skills\\\\update-docs\\\\update-docs.sh\")",
+      "Bash(bash .claude/skills/update-docs/update-docs.sh report)",
+      "Bash(bash -x .claude/skills/update-docs/update-docs.sh report)",
+      "Bash(chmod +x \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\.claude\\\\skills\\\\update-docs\\\\quick-check.sh\")",
+      "Bash(./.claude/skills/update-docs/quick-check.sh)",
+      "Bash(bash -x ./.claude/skills/update-docs/quick-check.sh)"
     ],
     "additionalDirectories": [
-      "d:\\duaneleem\\Code\\utils.win\\sh-convert-pdf-to-text\\.claude\\skills"
+      "d:\\duaneleem\\Code\\utils.win\\sh-convert-pdf-to-text\\.claude\\skills",
+      "d:\\duaneleem\\Code\\utils.win\\.claude\\skills"
     ]
   }
 }
