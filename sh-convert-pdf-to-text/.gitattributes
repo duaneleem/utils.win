@@ -1,0 +1,11 @@
+# Bash scripts and related files must use LF line endings (for WSL compatibility)
+*.sh text eol=lf
+*.env text eol=lf
+example.env text eol=lf
+.gitignore text eol=lf
+
+# Markdown files can use native line endings
+*.md text
+
+# Binary files
+*.pdf binary

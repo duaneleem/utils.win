@@ -1,0 +1,6 @@
+# Environment variables (contains user-specific paths)
+.env
+
+# Tracking data and temporary files
+temp/conversion-tracker.json
+temp/*.backup.*

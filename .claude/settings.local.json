@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"/mnt/d/duaneleem/Obsidian/UPOU DComm/Courses/COMM 340 Organizational Communication/Articles - For AI/\" 2>/dev/null | head -30)",
+      "Read(//mnt/d/duaneleem/Obsidian/UPOU DComm/Courses/COMM 340 Organizational Communication/**)",
+      "Bash(sudo apt-get update)",
+      "Bash(sudo apt-get install -y jq)",
+      "Bash(mkdir -p \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\sh-convert-pdf-to-text\\\\.claude\\\\skills\\\\run-pdf-converter\")",
+      "Read(//mnt/d/duaneleem/Code/utils.win/**)",
+      "Bash(chmod +x .claude/skills/run-pdf-converter/smoke.sh)",
+      "Bash(./.claude/skills/run-pdf-converter/smoke.sh)",
+      "Bash(wslpath \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\sh-convert-pdf-to-text\")",
+      "Bash(ls /mnt/d/duaneleem/Code/ 2>&1 | head -20)",
+      "Read(//mnt/d/duaneleem/**)"
+    ],
+    "additionalDirectories": [
+      "d:\\duaneleem\\Code\\utils.win\\sh-convert-pdf-to-text\\.claude\\skills"
+    ]
+  }
+}
