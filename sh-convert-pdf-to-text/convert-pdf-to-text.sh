@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+# Global variables for command-line arguments
+ARG_SOURCE=""
+ARG_TARGET=""
+
 # Load environment variables if .env exists
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -f "$SCRIPT_DIR/.env" ]]; then
@@ -25,7 +29,16 @@ declare -A TRACKER
 
 usage() {
   cat <<'EOF'
-Usage: convert-pdf-to-text.sh
+Usage: convert-pdf-to-text.sh [SOURCE=/path/to/pdfs] [TARGET=/path/to/output]
+
+Parameters:
+  SOURCE=/path    Source folder containing PDFs (searched recursively)
+  TARGET=/path    Target folder for output .txt files
+  -h, --help      Show this help message
+
+If parameters are not provided, the script will:
+  1. Check PDF_SOURCE_DIR and PDF_TARGET_DIR environment variables (.env file)
+  2. Prompt interactively for paths
 
 Prompts for source and target WSL folder paths, then converts every PDF
 in the source folder (including subdirectories) to .txt files in the target folder.
@@ -44,6 +57,29 @@ Requires: pdftotext (install: sudo apt install poppler-utils)
 Optional: pdfinfo for metadata-based naming
           tesseract-ocr, pdftoppm for OCR fallback on scanned PDFs
 EOF
+}
+
+parse_args() {
+  # Parse KEY=VALUE arguments
+  for arg in "$@"; do
+    case "$arg" in
+      SOURCE=*)
+        ARG_SOURCE="${arg#*=}"
+        ;;
+      TARGET=*)
+        ARG_TARGET="${arg#*=}"
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        echo "Error: Unknown argument: $arg" >&2
+        echo "Run with --help for usage information" >&2
+        exit 1
+        ;;
+    esac
+  done
 }
 
 need_cmd() {
@@ -392,10 +428,8 @@ update_tracker() {
 }
 
 main() {
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    usage
-    exit 0
-  fi
+  # Parse command-line arguments first
+  parse_args "$@"
 
   need_cmd pdftotext "Install with: sudo apt install poppler-utils"
 
@@ -411,19 +445,35 @@ main() {
 
   local location_source location_target
 
-  # Use environment variables if set, otherwise prompt
-  if [[ -n "${PDF_SOURCE_DIR:-}" ]]; then
+  # Priority order: command-line > env var > prompt
+  if [[ -n "${ARG_SOURCE:-}" ]]; then
+    location_source="$ARG_SOURCE"
+    echo "Source folder (from command-line): $location_source"
+  elif [[ -n "${PDF_SOURCE_DIR:-}" ]]; then
     location_source="$PDF_SOURCE_DIR"
     echo "Source folder (from .env): $location_source"
   else
     prompt_dir "Source folder (PDFs)" location_source
   fi
 
-  if [[ -n "${PDF_TARGET_DIR:-}" ]]; then
+  if [[ -n "${ARG_TARGET:-}" ]]; then
+    location_target="$ARG_TARGET"
+    echo "Target folder (from command-line): $location_target"
+  elif [[ -n "${PDF_TARGET_DIR:-}" ]]; then
     location_target="$PDF_TARGET_DIR"
     echo "Target folder (from .env): $location_target"
   else
     prompt_dir "Target folder (output .txt)" location_target
+  fi
+
+  # Validate directories exist
+  if [[ ! -d "$location_source" ]]; then
+    echo "Error: Source directory does not exist: $location_source" >&2
+    exit 1
+  fi
+  if [[ ! -d "$location_target" ]]; then
+    echo "Error: Target directory does not exist: $location_target" >&2
+    exit 1
   fi
 
   mapfile -d '' -t pdfs < <(find "$location_source" -type f \( -iname '*.pdf' \) -print0 | sort -z)

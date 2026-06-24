@@ -18,11 +18,17 @@
       "Bash(bash -x .claude/skills/update-docs/update-docs.sh report)",
       "Bash(chmod +x \"d:\\\\duaneleem\\\\Code\\\\utils.win\\\\.claude\\\\skills\\\\update-docs\\\\quick-check.sh\")",
       "Bash(./.claude/skills/update-docs/quick-check.sh)",
-      "Bash(bash -x ./.claude/skills/update-docs/quick-check.sh)"
+      "Bash(bash -x ./.claude/skills/update-docs/quick-check.sh)",
+      "Bash(bash convert-pdf-to-text.sh --help)",
+      "Bash(bash convert-pdf-to-text.sh INVALID=test)",
+      "Bash(mkdir -p /tmp/test-pdf-source /tmp/test-pdf-output && echo \"Test directories created\")",
+      "Bash(bash convert-pdf-to-text.sh SOURCE=/tmp/test-pdf-source TARGET=/tmp/test-pdf-output)",
+      "Bash(bash convert-pdf-to-text.sh SOURCE=/nonexistent TARGET=/tmp/test-pdf-output)"
     ],
     "additionalDirectories": [
       "d:\\duaneleem\\Code\\utils.win\\sh-convert-pdf-to-text\\.claude\\skills",
-      "d:\\duaneleem\\Code\\utils.win\\.claude\\skills"
+      "d:\\duaneleem\\Code\\utils.win\\.claude\\skills",
+      "\\tmp"
     ]
   }
 }

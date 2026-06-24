@@ -49,10 +49,56 @@ sudo apt-get install -y poppler-utils jq tesseract-ocr
    chmod +x convert-pdf-to-text.sh
    ```
 
-## Run (Interactive Mode)
+## Run (Command-Line Parameters - Recommended)
+
+Pass source and target paths directly as parameters:
 
 ```bash
 cd /path/to/sh-convert-pdf-to-text
+./convert-pdf-to-text.sh SOURCE=/path/to/pdfs TARGET=/path/to/output
+```
+
+**For paths with spaces, quote the entire parameter:**
+```bash
+./convert-pdf-to-text.sh "SOURCE=/path/with spaces/pdfs" "TARGET=/output/with spaces"
+```
+
+**Partial parameters** (combine with other methods):
+```bash
+# Use SOURCE from command-line, TARGET from .env or prompt
+./convert-pdf-to-text.sh SOURCE=/path/to/pdfs
+
+# Use TARGET from command-line, SOURCE from .env or prompt  
+./convert-pdf-to-text.sh TARGET=/path/to/output
+```
+
+**Output:**
+```
+PDF to text batch converter (tracking enabled)
+Source folder (from command-line): /path/to/pdfs
+Target folder (from command-line): /path/to/output
+Found 5 PDF(s). Converting...
+  Articles/Smith (2024) - Title.pdf -> smith_2024_title.txt
+  ...
+Done. Converted: 5  Skipped: 0  Replaced: 0  Failed: 0  OCR: 1
+```
+
+## Run (Environment Variables)
+
+If `.env` has `PDF_SOURCE_DIR` and `PDF_TARGET_DIR` set, the script uses them automatically:
+
+```bash
+./convert-pdf-to-text.sh
+# No prompts - uses paths from .env
+```
+
+**Note:** Command-line parameters override `.env` values.
+
+## Run (Interactive Mode)
+
+Without parameters or `.env` configuration, the script prompts interactively:
+
+```bash
 ./convert-pdf-to-text.sh
 ```
 
@@ -60,28 +106,12 @@ The script will prompt for:
 1. Source folder containing PDFs (supports subdirectories)
 2. Target folder for output .txt files
 
-**First run output:**
-```
-PDF to text batch converter (tracking enabled)
-Found 5 PDF(s). Converting...
-  Articles/Smith (2024) - Title.pdf -> smith_2024_title.txt
-  ...
-Done. Converted: 5  Skipped: 0  Replaced: 0  Failed: 0  OCR: 1
-```
+## Priority Order
 
-**Second run (unchanged PDFs):**
-```
-Done. Converted: 0  Skipped: 5  Replaced: 0  Failed: 0  OCR: 0
-```
-
-## Run (Automated with .env)
-
-If `.env` has `PDF_SOURCE_DIR` and `PDF_TARGET_DIR` set, the script runs non-interactively:
-
-```bash
-./convert-pdf-to-text.sh
-# No prompts - uses paths from .env
-```
+The script determines paths using this priority (highest to lowest):
+1. **Command-line parameters** (`SOURCE=` and `TARGET=`)
+2. **Environment variables** (from `.env` file)
+3. **Interactive prompts** (fallback)
 
 ## How It Works
 

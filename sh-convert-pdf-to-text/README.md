@@ -22,17 +22,43 @@ Batch-converts PDFs to UTF-8 text files using `pdftotext`, with intelligent OCR 
 
 ## Quick Start
 
-From WSL bash:
+### Option 1: Command-Line Parameters (Fastest)
 
 ```bash
 cd /path/to/sh-convert-pdf-to-text
 chmod +x convert-pdf-to-text.sh
+./convert-pdf-to-text.sh SOURCE=/path/to/pdfs TARGET=/path/to/output
+```
+
+**For paths with spaces, quote the entire parameter:**
+```bash
+./convert-pdf-to-text.sh "SOURCE=/path/with spaces" "TARGET=/output/with spaces"
+```
+
+### Option 2: Environment Variables
+
+Create `.env` file (see Configuration section below), then:
+```bash
+./convert-pdf-to-text.sh
+# Uses paths from .env automatically
+```
+
+### Option 3: Interactive Prompts
+
+```bash
 ./convert-pdf-to-text.sh
 ```
 
 The script prompts for:
 1. **Source folder** — WSL path containing PDFs (searched recursively)
 2. **Target folder** — WSL path where `.txt` files are written
+
+### Priority Order
+
+The script uses this priority order for determining source/target paths:
+1. **Command-line parameters** (highest priority)
+2. **Environment variables** from `.env` file
+3. **Interactive prompts** (fallback)
 
 ## Configuration (Optional)
 
